@@ -1,0 +1,1133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VM Stats</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      min-height: 100vh;
+      padding: 2rem;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 2rem;
+    }
+
+    h1 { font-size: 1.5rem; font-weight: 600; }
+
+    button {
+      background: #3b82f6;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 0.5rem 1rem;
+      font-size: 0.875rem;
+      cursor: pointer;
+    }
+
+    button:hover { background: #2563eb; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 1rem;
+    }
+
+    .dashboard {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .dashboard-top {
+      display: grid;
+      grid-template-columns: minmax(320px, 1.2fr) minmax(320px, 1fr);
+      gap: 1rem;
+      align-items: start;
+    }
+
+    .compact-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .card.compact .card-body {
+      min-height: unset;
+      padding: 0.75rem 1rem;
+    }
+
+    .card.compact .card-header {
+      padding: 0.625rem 0.875rem;
+    }
+
+    .card.compact .endpoint {
+      font-size: 0.6875rem;
+    }
+
+    .cpu-compact {
+      display: flex;
+      align-items: center;
+      gap: 0.875rem;
+      flex-wrap: wrap;
+    }
+
+    .card.compact .cpu-ring {
+      --size: 52px;
+    }
+
+    .card.compact .cpu-ring-inner {
+      font-size: 0.75rem;
+    }
+
+    .card.compact .cpu-summary h3 {
+      font-size: 0.9375rem;
+    }
+
+    .card.compact .cpu-summary p {
+      font-size: 0.75rem;
+    }
+
+    .cpu-chips-inline {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.375rem;
+      flex: 1;
+    }
+
+    .cpu-chips-inline .chip {
+      padding: 0.375rem 0.5rem;
+      min-width: 4.5rem;
+    }
+
+    .cpu-chips-inline .chip-value {
+      font-size: 0.8125rem;
+    }
+
+    .memory-compact {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.625rem;
+    }
+
+    .memory-compact .panel {
+      padding: 0.625rem;
+      margin: 0;
+    }
+
+    .memory-compact .panel-header {
+      margin-bottom: 0.375rem;
+    }
+
+    .traffic-compact .panel {
+      padding: 0.625rem;
+    }
+
+    .traffic-compact .net-row {
+      margin-top: 0.375rem;
+    }
+
+    @media (max-width: 900px) {
+      .dashboard-top {
+        grid-template-columns: 1fr;
+      }
+
+      .memory-compact {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .card {
+      background: #1a1d27;
+      border: 1px solid #2d3348;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.875rem 1rem;
+      border-bottom: 1px solid #2d3348;
+      background: #151821;
+    }
+
+    .card-title {
+      font-size: 0.875rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #94a3b8;
+    }
+
+    .endpoint {
+      font-family: "SF Mono", Monaco, Consolas, monospace;
+      font-size: 0.75rem;
+      color: #64748b;
+    }
+
+    .card-body {
+      padding: 1rem;
+    }
+
+    .loading { color: #64748b; font-style: italic; }
+    .error { color: #f87171; font-size: 0.875rem; }
+    .empty { color: #64748b; font-size: 0.875rem; }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #64748b;
+    }
+    .status-dot.ok { background: #22c55e; }
+    .status-dot.err { background: #ef4444; }
+
+    .panel-list { display: flex; flex-direction: column; gap: 0.875rem; }
+
+    .panel {
+      background: #151821;
+      border: 1px solid #2d3348;
+      border-radius: 8px;
+      padding: 0.875rem;
+    }
+
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 0.625rem;
+      gap: 0.5rem;
+    }
+
+    .panel-title {
+      font-size: 0.8125rem;
+      font-weight: 600;
+      color: #e2e8f0;
+    }
+
+    .panel-subtitle {
+      font-family: "SF Mono", Monaco, Consolas, monospace;
+      font-size: 0.75rem;
+      color: #64748b;
+      word-break: break-all;
+      text-align: right;
+    }
+
+    .bar-track {
+      height: 8px;
+      background: #2d3348;
+      border-radius: 4px;
+      overflow: hidden;
+      margin-bottom: 0.5rem;
+    }
+
+    .bar-fill {
+      height: 100%;
+      border-radius: 4px;
+      background: #3b82f6;
+      transition: width 0.3s ease;
+    }
+
+    .bar-fill.warn { background: #f59e0b; }
+    .bar-fill.crit { background: #ef4444; }
+    .bar-fill.mem { background: #8b5cf6; }
+    .bar-fill.swap { background: #06b6d4; }
+
+    .panel-stats {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.75rem;
+      color: #94a3b8;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    .panel-stats strong { color: #cbd5e1; }
+
+    .cpu-hero {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .cpu-ring {
+      --size: 72px;
+      width: var(--size);
+      height: var(--size);
+      border-radius: 50%;
+      background: conic-gradient(#3b82f6 calc(var(--pct) * 1%), #2d3348 0);
+      display: grid;
+      place-items: center;
+      flex-shrink: 0;
+    }
+
+    .cpu-ring-inner {
+      width: calc(var(--size) - 14px);
+      height: calc(var(--size) - 14px);
+      border-radius: 50%;
+      background: #151821;
+      display: grid;
+      place-items: center;
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: #e2e8f0;
+    }
+
+    .cpu-summary h3 {
+      font-size: 1.125rem;
+      font-weight: 600;
+      margin-bottom: 0.25rem;
+    }
+
+    .cpu-summary p {
+      font-size: 0.8125rem;
+      color: #94a3b8;
+    }
+
+    .chip-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.5rem;
+    }
+
+    .chip {
+      background: #0f1117;
+      border: 1px solid #2d3348;
+      border-radius: 6px;
+      padding: 0.5rem 0.625rem;
+    }
+
+    .chip-label {
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: #64748b;
+      margin-bottom: 0.125rem;
+    }
+
+    .chip-value {
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: #e2e8f0;
+    }
+
+    .net-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.5rem;
+      margin-top: 0.5rem;
+    }
+
+    .net-stat {
+      background: #0f1117;
+      border: 1px solid #2d3348;
+      border-radius: 6px;
+      padding: 0.5rem 0.625rem;
+    }
+
+    .net-stat .label {
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: #64748b;
+      margin-bottom: 0.125rem;
+    }
+
+    .net-stat .value {
+      font-size: 0.8125rem;
+      font-weight: 600;
+      color: #cbd5e1;
+    }
+
+    .net-stat .sub {
+      font-size: 0.6875rem;
+      color: #64748b;
+      margin-top: 0.125rem;
+    }
+
+    .section-label {
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #64748b;
+      margin: 0.75rem 0 0.5rem;
+    }
+
+    .section-label:first-child { margin-top: 0; }
+
+    .io-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.5rem;
+    }
+
+    .badge {
+      display: inline-block;
+      font-size: 0.6875rem;
+      padding: 0.125rem 0.375rem;
+      border-radius: 4px;
+      background: #2d3348;
+      color: #94a3b8;
+      text-transform: uppercase;
+    }
+
+    .badge.up { background: #14532d; color: #86efac; }
+    .badge.down { background: #450a0a; color: #fca5a5; }
+    .badge.net { background: #1e3a5f; color: #93c5fd; }
+    .badge.gpu { background: #4c1d95; color: #c4b5fd; }
+    .badge.storage { background: #713f12; color: #fcd34d; }
+    .badge.usb { background: #134e4a; color: #5eead4; }
+    .badge.other { background: #2d3348; color: #94a3b8; }
+
+    .notice {
+      background: #0f1117;
+      border: 1px dashed #2d3348;
+      border-radius: 8px;
+      padding: 0.875rem;
+      font-size: 0.8125rem;
+      color: #94a3b8;
+      line-height: 1.5;
+    }
+
+    .addr-line {
+      font-family: "SF Mono", Monaco, Consolas, monospace;
+      font-size: 0.75rem;
+      color: #64748b;
+      margin-top: 0.375rem;
+      word-break: break-all;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>VM Stats Dashboard</h1>
+    <button id="refresh">Refresh All</button>
+  </header>
+
+  <div class="dashboard">
+    <div class="dashboard-top">
+      <div id="storage-slot"></div>
+      <div class="compact-stack" id="compact-stack"></div>
+    </div>
+    <div class="grid" id="bottom-grid"></div>
+  </div>
+
+  <script>
+    const endpoints = [
+      {
+        id: 'storage',
+        label: 'Storage',
+        type: 'storage',
+        sources: [
+          { path: '/api/disk', key: 'disk' },
+          { path: '/api/lsblk', key: 'lsblk' },
+          { path: '/api/iostat', key: 'iostat' },
+        ],
+      },
+      { id: 'cpu', path: '/api/cpu', label: 'CPU', key: 'cpu', type: 'cpu', layout: 'compact' },
+      { id: 'memory', path: '/api/memory', label: 'Memory', key: 'memory', type: 'memory', layout: 'compact' },
+      { id: 'traffic', path: '/api/traffic', label: 'Network Traffic', key: 'traffic', type: 'traffic', layout: 'compact' },
+      { id: 'nic', path: '/api/nic', label: 'NIC', key: 'nic', type: 'nic' },
+      { id: 'pci', path: '/api/pci', label: 'PCIe Bus', key: 'pci', type: 'pci' },
+      { id: 'gpu', path: '/api/gpu', label: 'GPU', key: 'gpu', type: 'gpu' },
+      { id: 'hardware', path: '/api/sensors', label: 'PSU / Fan', key: 'sensors', type: 'sensors' },
+    ];
+
+    const CPU_LABELS = {
+      user: 'User',
+      system: 'System',
+      nice: 'Nice',
+      idle: 'Idle',
+      iowait: 'I/O Wait',
+      hardware_irq: 'HW IRQ',
+      software_irq: 'SW IRQ',
+      steal: 'Steal',
+    };
+
+    const storageSlot = document.getElementById('storage-slot');
+    const compactStack = document.getElementById('compact-stack');
+    const bottomGrid = document.getElementById('bottom-grid');
+    const refreshBtn = document.getElementById('refresh');
+
+    function cardHtml(ep, extraClass = '') {
+      const pathLabel = ep.sources
+        ? ep.sources.map(s => s.path).join(' ')
+        : ep.path;
+      return `
+        <div class="card ${extraClass}" id="card-${ep.id}">
+          <div class="card-header">
+            <span class="card-title">${ep.label}</span>
+            <div style="display:flex;align-items:center;gap:0.5rem">
+              <span class="endpoint">${pathLabel}</span>
+              <span class="status-dot" id="dot-${ep.id}"></span>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="loading" id="out-${ep.id}">Waiting...</div>
+          </div>
+        </div>`;
+    }
+
+    function buildCards() {
+      const compactIds = new Set(['cpu', 'memory', 'traffic']);
+      storageSlot.innerHTML = cardHtml(endpoints.find(ep => ep.id === 'storage'));
+      compactStack.innerHTML = endpoints
+        .filter(ep => compactIds.has(ep.id))
+        .map(ep => cardHtml(ep, 'compact'))
+        .join('');
+      bottomGrid.innerHTML = endpoints
+        .filter(ep => ep.id !== 'storage' && !compactIds.has(ep.id))
+        .map(ep => cardHtml(ep))
+        .join('');
+    }
+
+    function barClass(percent) {
+      if (percent >= 90) return 'bar-fill crit';
+      if (percent >= 75) return 'bar-fill warn';
+      return 'bar-fill';
+    }
+
+    function formatMb(mb) {
+      if (mb >= 1024) return `${(mb / 1024).toFixed(1)} GB`;
+      return `${mb} MB`;
+    }
+
+    function formatBytes(bytes) {
+      if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(2)} GB`;
+      if (bytes >= 1024 ** 2) return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
+      if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+      return `${bytes} B`;
+    }
+
+    function formatPackets(n) {
+      if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M pkts`;
+      if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K pkts`;
+      return `${n} pkts`;
+    }
+
+    function parseLsblk(output) {
+      const keepTypes = new Set(['disk', 'part', 'lvm']);
+      const devices = [];
+
+      for (const line of output.trim().split('\n')) {
+        if (!line.trim()) continue;
+        const parts = line.trim().split(/\s+/);
+        if (parts.length < 3) continue;
+
+        const name = parts[0];
+        const type = parts[2];
+        if (!keepTypes.has(type) || name.startsWith('loop')) continue;
+
+        const mountpoint = parts[3] && parts[3] !== '-' ? parts[3] : '';
+        const fstype = parts[4] && parts[4] !== '-' ? parts[4] : '';
+        const model = parts.slice(5).join(' ');
+
+        devices.push({ name, size: parts[1], type, mountpoint, fstype, model });
+      }
+
+      return devices;
+    }
+
+    function parseIostat(output) {
+      const devices = [];
+      let inSection = false;
+
+      for (const line of output.trim().split('\n')) {
+        if (line.startsWith('Device')) {
+          inSection = true;
+          continue;
+        }
+        if (!inSection || !line.trim()) continue;
+
+        const parts = line.trim().split(/\s+/);
+        if (parts.length < 16 || parts[0].startsWith('loop')) continue;
+
+        devices.push({
+          name: parts[0],
+          read_kbs: parseFloat(parts[2]),
+          write_kbs: parseFloat(parts[8]),
+          util: parseFloat(parts[15]),
+        });
+      }
+
+      return devices;
+    }
+
+    function parseDf(output) {
+      const skipPrefixes = ['tmpfs', 'devtmpfs', 'udev', 'overlay', 'squashfs'];
+      const drives = [];
+
+      for (const line of output.trim().split('\n').slice(1)) {
+        const parts = line.split(/\s+/);
+        if (parts.length < 6) continue;
+
+        const filesystem = parts[0];
+        if (skipPrefixes.some(p => filesystem.startsWith(p))) continue;
+
+        const usePercent = parseInt(parts[4].replace('%', ''), 10) || 0;
+        drives.push({
+          filesystem,
+          size: parts[1],
+          used: parts[2],
+          avail: parts[3],
+          use_percent: usePercent,
+          mounted_on: parts.slice(5).join(' '),
+        });
+      }
+
+      return drives;
+    }
+
+    function parseCpu(output) {
+      const labels = ['user', 'system', 'nice', 'idle', 'iowait', 'hardware_irq', 'software_irq', 'steal'];
+      const values = [...output.matchAll(/([\d.]+)\s*[a-z]{2}/g)].map(m => parseFloat(m[1]));
+      const breakdown = Object.fromEntries(labels.map((label, i) => [label, values[i] ?? 0]));
+      const used = Math.round(labels.reduce((sum, label) =>
+        label === 'idle' ? sum : sum + breakdown[label], 0) * 10) / 10;
+
+      return { used_percent: used, idle_percent: breakdown.idle, breakdown };
+    }
+
+    function parseMemory(output) {
+      const rows = [];
+
+      for (const line of output.trim().split('\n')) {
+        const parts = line.split(/\s+/);
+        if (parts[0] === 'Mem:') {
+          const total = parseInt(parts[1], 10);
+          const used = parseInt(parts[2], 10);
+          const available = parseInt(parts[6], 10) || parseInt(parts[3], 10);
+          rows.push({
+            label: 'RAM',
+            total_mb: total,
+            used_mb: used,
+            available_mb: available,
+            use_percent: total ? Math.round(used / total * 100) : 0,
+          });
+        } else if (parts[0] === 'Swap:') {
+          const total = parseInt(parts[1], 10);
+          const used = parseInt(parts[2], 10);
+          const free = parseInt(parts[3], 10);
+          rows.push({
+            label: 'Swap',
+            total_mb: total,
+            used_mb: used,
+            available_mb: free,
+            use_percent: total ? Math.round(used / total * 100) : 0,
+          });
+        }
+      }
+
+      return rows;
+    }
+
+    function parseTraffic(output) {
+      const interfaces = [];
+
+      for (const block of output.split(/^(?=\d+:)/m)) {
+        if (!block.trim()) continue;
+
+        const firstLine = block.trim().split('\n')[0];
+        const match = firstLine.match(/^(\d+):\s+(\w+):\s+<([^>]+)>\s+.*state\s+(\w+)/);
+        if (!match) continue;
+
+        const name = match[2];
+        if (name === 'lo') continue;
+
+        const rxMatch = block.match(/RX:\s+bytes packets errors[^\n]*\n\s+(\d+)\s+(\d+)\s+(\d+)/);
+        const txMatch = block.match(/TX:\s+bytes packets errors[^\n]*\n\s+(\d+)\s+(\d+)\s+(\d+)/);
+
+        interfaces.push({
+          name,
+          state: match[4],
+          rx_bytes: rxMatch ? parseInt(rxMatch[1], 10) : 0,
+          rx_packets: rxMatch ? parseInt(rxMatch[2], 10) : 0,
+          rx_errors: rxMatch ? parseInt(rxMatch[3], 10) : 0,
+          tx_bytes: txMatch ? parseInt(txMatch[1], 10) : 0,
+          tx_packets: txMatch ? parseInt(txMatch[2], 10) : 0,
+          tx_errors: txMatch ? parseInt(txMatch[3], 10) : 0,
+        });
+      }
+
+      return interfaces;
+    }
+
+    function parseNic(output) {
+      const interfaces = [];
+      const blocks = output.split(/^=== /m).filter(Boolean);
+
+      for (const block of blocks) {
+        const name = block.split(' ===')[0].trim();
+        const sections = block.split('---ADDR---');
+        const linkSection = sections[0].replace(/^[^\n]+\n/, '');
+        const rest = sections[1] || '';
+        const [addrSection, ethtoolSection = ''] = rest.split('---ETHTOOL---');
+
+        const macMatch = linkSection.match(/link\/ether\s+(\S+)/);
+        const mtuMatch = linkSection.match(/mtu\s+(\d+)/);
+        const stateMatch = linkSection.match(/state\s+(\w+)/);
+        const addrLine = addrSection.trim().split('\n')[0] || '';
+        const addrParts = addrLine.trim().split(/\s+/);
+        const addresses = addrParts.length >= 3 ? addrParts.slice(2).join(' ') : '';
+
+        const speedMatch = ethtoolSection.match(/Speed:\s*(.+)/);
+        const duplexMatch = ethtoolSection.match(/Duplex:\s*(.+)/);
+        const linkMatch = ethtoolSection.match(/Link detected:\s*(.+)/);
+
+        interfaces.push({
+          name,
+          mac: macMatch ? macMatch[1] : '',
+          mtu: mtuMatch ? mtuMatch[1] : '',
+          state: stateMatch ? stateMatch[1] : '',
+          addresses,
+          speed: speedMatch ? speedMatch[1].trim() : '',
+          duplex: duplexMatch ? duplexMatch[1].trim() : '',
+          link_detected: linkMatch ? linkMatch[1].trim() : '',
+        });
+      }
+
+      return interfaces;
+    }
+
+    function parseGpu(output) {
+      return output.trim().split('\n').filter(Boolean).map(line => {
+        const match = line.match(/^(\S+)\s+\S+:\s+(.+)$/);
+        return {
+          id: match ? match[1] : line,
+          name: match ? match[2].trim() : line.trim(),
+        };
+      });
+    }
+
+    function pciCategory(type) {
+      const t = type.toLowerCase();
+      if (t.includes('ethernet') || t.includes('network')) return { label: 'Network', badge: 'net' };
+      if (t.includes('vga') || t.includes('3d') || t.includes('display')) return { label: 'Display', badge: 'gpu' };
+      if (t.includes('scsi') || t.includes('sata') || t.includes('nvme') || t.includes('storage') || t.includes('raid')) {
+        return { label: 'Storage', badge: 'storage' };
+      }
+      if (t.includes('usb')) return { label: 'USB', badge: 'usb' };
+      return { label: 'Other', badge: 'other' };
+    }
+
+    function parsePci(output) {
+      const devices = [];
+
+      for (const line of output.trim().split('\n')) {
+        if (!line.trim()) continue;
+        const match = line.match(/^(\S+)\s+([^:]+):\s+(.+)$/);
+        if (!match) continue;
+
+        const slot = match[1];
+        const type = match[2].trim();
+        const name = match[3].trim();
+        const ids = name.match(/\[([^\]]+)\]/g);
+        const category = pciCategory(type);
+
+        devices.push({
+          slot,
+          type,
+          name: name.replace(/\s*\[[^\]]+\]/g, '').trim(),
+          ids: ids ? ids.map(id => id.slice(1, -1)).join(' ') : '',
+          category: category.label,
+          badge: category.badge,
+        });
+      }
+
+      return devices;
+    }
+
+    function renderPci(devices) {
+      if (!devices.length) return '<div class="empty">No PCIe devices found</div>';
+
+      const groups = {};
+      for (const dev of devices) {
+        if (!groups[dev.category]) groups[dev.category] = [];
+        groups[dev.category].push(dev);
+      }
+
+      const order = ['Network', 'Display', 'Storage', 'USB', 'Other'];
+      let html = '';
+
+      for (const category of order) {
+        const items = groups[category];
+        if (!items) continue;
+
+        html += `<div class="section-label">${category}</div><div class="panel-list">`;
+        html += items.map(dev => `
+          <div class="panel">
+            <div class="panel-header">
+              <span class="panel-title">${dev.name} <span class="badge ${dev.badge}">${dev.type.split('[')[0].trim()}</span></span>
+              <span class="panel-subtitle">${dev.slot}</span>
+            </div>
+            <div class="panel-stats">
+              <span>${dev.ids ? `<strong>${dev.ids}</strong>` : 'No device ID'}</span>
+              <span>PCIe slot</span>
+            </div>
+          </div>
+        `).join('');
+        html += '</div>';
+      }
+
+      return html;
+    }
+
+    function parseSensors(output) {
+      const text = output.trim();
+      if (!text || (text.includes('not found') && !text.includes('==='))) {
+        return null;
+      }
+
+      const readings = [];
+
+      for (const line of text.split('\n')) {
+        const tempMatch = line.match(/^Core \d+:\s+\+([\d.]+)/);
+        const fanMatch = line.match(/fan\d+:\s+([\d.]+)\s*RPM/i);
+        const hwmonMatch = line.match(/^(fan\d+_input|temp\d+_input|power\d+_input|in\d+_input):\s+(\d+)/);
+
+        if (tempMatch) {
+          readings.push({ kind: 'temp', label: line.split(':')[0], value: `${tempMatch[1]}°C` });
+        } else if (fanMatch) {
+          readings.push({ kind: 'fan', label: line.split(':')[0], value: `${fanMatch[1]} RPM` });
+        } else if (hwmonMatch) {
+          const label = hwmonMatch[1].replace('_input', '');
+          const raw = parseInt(hwmonMatch[2], 10);
+          if (label.startsWith('temp')) {
+            readings.push({ kind: 'temp', label, value: `${(raw / 1000).toFixed(1)}°C` });
+          } else if (label.startsWith('fan')) {
+            readings.push({ kind: 'fan', label, value: `${raw} RPM` });
+          } else if (label.startsWith('power') || label.startsWith('in')) {
+            readings.push({ kind: 'power', label, value: `${raw} mW` });
+          }
+        }
+      }
+
+      return readings.length ? readings : null;
+    }
+
+    function renderStorage(data) {
+      const drives = parseDf(data.disk || '');
+      const blocks = parseLsblk(data.lsblk || '');
+      const io = parseIostat(data.iostat || '');
+
+      let html = '';
+
+      if (drives.length) {
+        html += `<div class="section-label">Filesystem Usage</div>`;
+        html += renderDrives(drives);
+      }
+
+      if (blocks.length) {
+        html += `<div class="section-label">Block Devices</div><div class="panel-list">`;
+        html += blocks.map(dev => `
+          <div class="panel">
+            <div class="panel-header">
+              <span class="panel-title">${dev.name} <span class="badge">${dev.type}</span></span>
+              <span class="panel-subtitle">${dev.size}</span>
+            </div>
+            <div class="panel-stats">
+              <span>${dev.mountpoint ? `<strong>${dev.mountpoint}</strong> · ` : ''}${dev.fstype || 'no fstype'}</span>
+              <span>${dev.model || ''}</span>
+            </div>
+          </div>
+        `).join('');
+        html += '</div>';
+      }
+
+      if (io.length) {
+        html += `<div class="section-label">Disk I/O</div><div class="panel-list">`;
+        html += io.map(dev => `
+          <div class="panel">
+            <div class="panel-header">
+              <span class="panel-title">${dev.name}</span>
+              <span class="panel-subtitle">${dev.util}% util</span>
+            </div>
+            <div class="bar-track">
+              <div class="${barClass(dev.util)}" style="width:${Math.min(dev.util, 100)}%"></div>
+            </div>
+            <div class="io-grid">
+              <div class="chip"><div class="chip-label">Read</div><div class="chip-value">${dev.read_kbs.toFixed(1)} kB/s</div></div>
+              <div class="chip"><div class="chip-label">Write</div><div class="chip-value">${dev.write_kbs.toFixed(1)} kB/s</div></div>
+              <div class="chip"><div class="chip-label">Util</div><div class="chip-value">${dev.util}%</div></div>
+            </div>
+          </div>
+        `).join('');
+        html += '</div>';
+      }
+
+      return html || '<div class="empty">No storage data</div>';
+    }
+
+    function renderDrives(drives) {
+      if (!drives.length) return '<div class="empty">No drives found</div>';
+
+      return `<div class="panel-list">${drives.map(drive => `
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">${drive.filesystem}</span>
+            <span class="panel-subtitle">${drive.mounted_on}</span>
+          </div>
+          <div class="bar-track">
+            <div class="${barClass(drive.use_percent)}" style="width:${drive.use_percent}%"></div>
+          </div>
+          <div class="panel-stats">
+            <span><strong>${drive.used}</strong> used of <strong>${drive.size}</strong></span>
+            <span><strong>${drive.avail}</strong> free · ${drive.use_percent}%</span>
+          </div>
+        </div>
+      `).join('')}</div>`;
+    }
+
+    function renderCpu(data, compact = false) {
+      const used = data.used_percent ?? 0;
+      const idle = data.idle_percent ?? 0;
+      const breakdown = data.breakdown || {};
+      const chips = Object.entries(breakdown)
+        .filter(([, value]) => value > 0)
+        .map(([key, value]) => `
+          <div class="chip">
+            <div class="chip-label">${CPU_LABELS[key] || key}</div>
+            <div class="chip-value">${value}%</div>
+          </div>
+        `).join('');
+
+      if (compact) {
+        return `
+          <div class="cpu-compact">
+            <div class="cpu-hero" style="margin-bottom:0">
+              <div class="cpu-ring" style="--pct:${used}">
+                <div class="cpu-ring-inner">${used}%</div>
+              </div>
+              <div class="cpu-summary">
+                <h3>${used}% in use</h3>
+                <p>${idle}% idle</p>
+              </div>
+            </div>
+            <div class="cpu-chips-inline">${chips || '<div class="empty">No CPU data</div>'}</div>
+          </div>
+        `;
+      }
+
+      return `
+        <div class="cpu-hero">
+          <div class="cpu-ring" style="--pct:${used}">
+            <div class="cpu-ring-inner">${used}%</div>
+          </div>
+          <div class="cpu-summary">
+            <h3>${used}% in use</h3>
+            <p>${idle}% idle · ${100 - used}% active</p>
+          </div>
+        </div>
+        <div class="chip-grid">${chips || '<div class="empty">No CPU data</div>'}</div>
+      `;
+    }
+
+    function renderMemory(rows, compact = false) {
+      if (!rows.length) return '<div class="empty">No memory data</div>';
+
+      const rowHtml = rows.map(row => `
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">${row.label}</span>
+            <span class="panel-subtitle">${formatMb(row.total_mb)}</span>
+          </div>
+          <div class="bar-track">
+            <div class="${barClass(row.use_percent)} ${row.label === 'Swap' ? 'swap' : 'mem'}" style="width:${row.use_percent}%"></div>
+          </div>
+          <div class="panel-stats">
+            <span><strong>${formatMb(row.used_mb)}</strong> used</span>
+            <span>${row.use_percent}%</span>
+          </div>
+        </div>
+      `).join('');
+
+      if (compact) {
+        return `<div class="memory-compact">${rowHtml}</div>`;
+      }
+
+      return `<div class="panel-list">${rows.map(row => `
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">${row.label}</span>
+            <span class="panel-subtitle">${formatMb(row.total_mb)} total</span>
+          </div>
+          <div class="bar-track">
+            <div class="${barClass(row.use_percent)} ${row.label === 'Swap' ? 'swap' : 'mem'}" style="width:${row.use_percent}%"></div>
+          </div>
+          <div class="panel-stats">
+            <span><strong>${formatMb(row.used_mb)}</strong> used</span>
+            <span><strong>${formatMb(row.available_mb)}</strong> available · ${row.use_percent}%</span>
+          </div>
+        </div>
+      `).join('')}</div>`;
+    }
+
+    function renderTraffic(interfaces, compact = false) {
+      if (!interfaces.length) return '<div class="empty">No traffic data found</div>';
+
+      const panels = interfaces.map(iface => `
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">${iface.name} <span class="badge ${iface.state === 'UP' ? 'up' : 'down'}">${iface.state}</span></span>
+            <span class="panel-subtitle">traffic</span>
+          </div>
+          <div class="net-row">
+            <div class="net-stat">
+              <div class="label">Received</div>
+              <div class="value">${formatBytes(iface.rx_bytes)}</div>
+              <div class="sub">${formatPackets(iface.rx_packets)} · ${iface.rx_errors} err</div>
+            </div>
+            <div class="net-stat">
+              <div class="label">Transmitted</div>
+              <div class="value">${formatBytes(iface.tx_bytes)}</div>
+              <div class="sub">${formatPackets(iface.tx_packets)} · ${iface.tx_errors} err</div>
+            </div>
+          </div>
+        </div>
+      `).join('');
+
+      if (compact) {
+        return `<div class="traffic-compact">${panels}</div>`;
+      }
+
+      return `<div class="panel-list">${panels}</div>`;
+    }
+
+    function renderNic(interfaces) {
+      if (!interfaces.length) return '<div class="empty">No NIC info found</div>';
+
+      return `<div class="panel-list">${interfaces.map(iface => `
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">${iface.name} <span class="badge ${iface.state === 'UP' ? 'up' : 'down'}">${iface.state}</span></span>
+            <span class="panel-subtitle">MTU ${iface.mtu || '?'}</span>
+          </div>
+          ${iface.addresses ? `<div class="addr-line">${iface.addresses}</div>` : ''}
+          <div class="chip-grid" style="margin-top:0.5rem">
+            <div class="chip">
+              <div class="chip-label">MAC</div>
+              <div class="chip-value" style="font-size:0.75rem">${iface.mac || 'unknown'}</div>
+            </div>
+            <div class="chip">
+              <div class="chip-label">Link</div>
+              <div class="chip-value">${iface.link_detected || 'unknown'}</div>
+            </div>
+            ${iface.speed ? `<div class="chip"><div class="chip-label">Speed</div><div class="chip-value">${iface.speed}</div></div>` : ''}
+            ${iface.duplex ? `<div class="chip"><div class="chip-label">Duplex</div><div class="chip-value">${iface.duplex}</div></div>` : ''}
+          </div>
+        </div>
+      `).join('')}</div>`;
+    }
+
+    function renderGpu(gpus) {
+      if (!gpus.length) {
+        return '<div class="notice">No GPU detected inside this VM.</div>';
+      }
+
+      return `<div class="panel-list">${gpus.map(gpu => `
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">${gpu.name}</span>
+            <span class="panel-subtitle">${gpu.id}</span>
+          </div>
+          <div class="notice">Virtual GPU — utilization metrics are not exposed to the guest.</div>
+        </div>
+      `).join('')}</div>`;
+    }
+
+    function renderSensors(readings) {
+      if (!readings) {
+        return `<div class="notice">PSU and fan sensors are not available inside this VM.<br><br>These readings typically require host-level access (IPMI, <code>lm-sensors</code>, or hypervisor APIs).</div>`;
+      }
+
+      const groups = { temp: 'Temperature', fan: 'Fans', power: 'Power' };
+      let html = '';
+
+      for (const [kind, label] of Object.entries(groups)) {
+        const items = readings.filter(r => r.kind === kind);
+        if (!items.length) continue;
+        html += `<div class="section-label">${label}</div><div class="chip-grid">`;
+        html += items.map(item => `
+          <div class="chip">
+            <div class="chip-label">${item.label}</div>
+            <div class="chip-value">${item.value}</div>
+          </div>
+        `).join('');
+        html += '</div>';
+      }
+
+      return html || `<div class="notice">Sensor tools ran but returned no usable readings.</div>`;
+    }
+
+    function renderEndpoint(ep, data) {
+      const compact = ep.layout === 'compact';
+      switch (ep.type) {
+        case 'storage': return renderStorage(data);
+        case 'cpu': return renderCpu(parseCpu(data[ep.key] || ''), compact);
+        case 'memory': return renderMemory(parseMemory(data[ep.key] || ''), compact);
+        case 'traffic': return renderTraffic(parseTraffic(data[ep.key] || ''), compact);
+        case 'nic': return renderNic(parseNic(data[ep.key] || ''));
+        case 'pci': return renderPci(parsePci(data[ep.key] || ''));
+        case 'gpu': return renderGpu(parseGpu(data[ep.key] || ''));
+        case 'sensors': return renderSensors(parseSensors(data[ep.key] || ''));
+        default: return `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+      }
+    }
+
+    async function fetchJson(path) {
+      const res = await fetch(path);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    }
+
+    async function fetchEndpoint(ep) {
+      const out = document.getElementById(`out-${ep.id}`);
+      const dot = document.getElementById(`dot-${ep.id}`);
+      out.className = 'loading';
+      out.innerHTML = 'Loading...';
+      dot.className = 'status-dot';
+
+      try {
+        let data;
+        if (ep.sources) {
+          const results = await Promise.all(ep.sources.map(s => fetchJson(s.path)));
+          data = Object.fromEntries(ep.sources.map((s, i) => [s.key, results[i][s.key] || '']));
+        } else {
+          data = await fetchJson(ep.path);
+        }
+
+        out.className = '';
+        out.innerHTML = renderEndpoint(ep, data);
+        dot.className = 'status-dot ok';
+      } catch (err) {
+        out.className = 'error';
+        out.textContent = `Error: ${err.message}`;
+        dot.className = 'status-dot err';
+      }
+    }
+
+    async function refreshAll() {
+      refreshBtn.disabled = true;
+      await Promise.all(endpoints.map(fetchEndpoint));
+      refreshBtn.disabled = false;
+    }
+
+    buildCards();
+    refreshAll();
+    refreshBtn.addEventListener('click', refreshAll);
+  </script>
+</body>
+</html>
